@@ -32,7 +32,7 @@ Importing data and mergind datasets
 ######growth season data 
 data_growthseason<-read.delim("C:\\users\\dxz757\\OneDrive\\CENPERM\\Projekt 2 - Dry snow fence, Disko\\Data\\ds_flux_swc_st_17til20.txt",
                    header = TRUE, sep = ";", dec = ".")
-
+#testing this
 
 ######weather data
 data_weather<-read.delim("C:\\users\\dxz757\\OneDrive\\CENPERM\\Projekt 2 - Dry snow fence, Disko\\Data\\GeoBasis_Disko_Meteorology_AWS3_incl 9999.txt",
