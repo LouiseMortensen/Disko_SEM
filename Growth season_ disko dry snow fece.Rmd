@@ -1,0 +1,482 @@
+---
+title: "Growth seasonal data - Disko SEM"
+Date: "june 2021"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r message=FALSE, warning=FALSE}
+#Usefull Libraries 
+library(readxl)
+library(tidyverse)
+library(plyr)
+library(bestNormalize)
+library(EnvStats)
+library(ggplot2)
+library("Hmisc")
+library(naniar)
+```
+
+
+Importing data and mergind datasets
+
+```{r warning=FALSE}
+######growth season data 
+data_growthseason<-read.delim("C:\\users\\dxz757\\OneDrive\\CENPERM\\Projekt 2 - Dry snow fence, Disko\\Data\\ds_flux_swc_st_17til20.txt",
+                   header = TRUE, sep = ";", dec = ".")
+
+
+######weather data
+data_weather<-read.delim("C:\\users\\dxz757\\OneDrive\\CENPERM\\Projekt 2 - Dry snow fence, Disko\\Data\\GeoBasis_Disko_Meteorology_AWS3_incl 9999.txt",
+                     header = TRUE, sep = "\t", dec = ".")
+#replacing -9999 with na
+data_weather<-data_weather %>% replace_with_na(replace = list('Precipitation_mm' = -9999))
+data_weather<-data_weather %>% select(, 1:13)
+
+#extracting relevant dates from data_growthseason1
+date.list<-c(data_growthseason$Date)
+
+#applying relevant dates from data_growthseason to weather
+data_weather1<- filter(data_weather, Date %in% data_growthseason$Date)
+
+
+#avergaing variables pr date
+data_weather1.mean <- aggregate(data_weather1, list(data_weather1$Date), mean) %>%
+  subset(select =-Date) 
+  names(data_weather1.mean)[names(data_weather1.mean) == 'Group.1'] <- 'Date'
+
+data_weather1.max <- aggregate(data_weather1, list(data_weather1$Date), max)
+
+data_weather1.min <- aggregate(data_weather1, list(data_weather1$Date), min)
+
+######full data set
+#include weather data in seasonal growth data_growthseason1
+data_all <- data_growthseason %>% 
+  full_join(data_weather1.mean, by="Date") %>% 
+  full_join(data_weather1.max, by="Date")%>% 
+  full_join(data_weather1.min, by="Date")
+```
+
+Removing extreme outliers found in the following scrip chunck
+```{r}
+#working data frame with extreme outliers removed:
+data_all1<-data_all[!data_all$serie %in% c('2017_A_17', '2017_A_27', '2020_E_47', '2017_C_16'),]
+```
+
+
+Checking data for extreme outliers
+visual insection of the boxplot to remove absurd outliers. remove and check boxplot again
+
+```{r}
+#####outliers by NEE
+boxplot(NEE ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown");  abline(h=(mean(data_all$NEE, na.rm = TRUE) ))
+
+
+NEE_out<-boxplot(NEE ~ year+campaign+treatment,
+                      data=data_all, plot=FALSE)$out
+NEE_out_overview<- data_all[which(data_all$NEE %in% NEE_out),]
+NEE_out_overview$diff_from_mean<-NEE_out_overview$NEE/(mean(data_all$NEE, na.rm = TRUE))
+
+
+data_all_extremes_removed<-data_all[!data_all$serie %in% c('2017_A_17', '2017_A_27'),]
+
+boxplot(NEE ~ year+campaign+treatment,
+        data=data_all_extremes_removed,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown") ; abline(h=(mean(data_all_extremes_removed$NEE, na.rm = TRUE) ))
+```
+
+#extremes to be removed:
+#serie: 2017_A_17 --> -2326.320, 71.731948 timers lower than total mean
+#serie: 2017_A_27 --> -3346.920, 103.202093 timers lower than total mean
+
+
+```{r}
+#####outliers by ER
+boxplot(ER ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown") ;        abline(h=(mean(data_all$ER, na.rm = TRUE) ))
+
+ER_out<-boxplot(ER ~ year+campaign+treatment,
+                 data=data_all, plot=FALSE)$out
+ER_out_overview<- data_all[which(data_all$ER %in% ER_out),]
+ER_out_overview$diff_from_mean<-ER_out_overview$ER/(mean(data_all$ER, na.rm = TRUE))
+
+data_all_extremes_removed<-data_all[!data_all$serie %in% c('2017_A_17', '2017_A_27', '2020_E_47'),]
+mean
+
+boxplot(ER ~ year+campaign+treatment,
+        data=data_all_extremes_removed,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown") ;        abline(h=(mean(data_all$ER, na.rm = TRUE) ))
+
+```
+
+#extremes to be removed:
+#serie: 2020_E_47 --> 1637.6400, 5.71763878 higher than total mean
+
+```{r}
+#####outliers by ch4
+boxplot(ch4 ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown"); abline(h=(mean(data_all$ch4, na.rm = TRUE) ))
+
+ch4_out<-boxplot(ch4 ~ year+campaign+treatment,
+                 data=data_all, plot=FALSE)$out
+ch4_out_overview<- data_all[which(data_all$ch4 %in% ch4_out),]
+
+ch4_out_overview$diff_from_mean<-ch4_out_overview$ch4/(mean(data_all$ch4, na.rm = TRUE))
+
+
+data_all_extremes_removed<-data_all[!data_all$serie %in% c('2017_A_17', '2017_A_27', '2020_E_47', '2017_C_16'),]
+
+
+boxplot(ch4 ~ year+campaign+treatment,
+        data=data_all_extremes_removed,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown"); abline(h=(mean(data_all$ch4, na.rm = TRUE) ))
+
+```
+#extremes to be removed:
+#serie:2017_C_16 --> 	-0.624240, 5.7932869 timers lower than total mean
+
+
+```{r}
+#####outliers by PAR
+boxplot(PAR ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown");  abline(h=(mean(data_all$PAR, na.rm = TRUE) )
+)
+
+```
+#no outliers --> too much variation
+
+
+
+
+```{r}
+#####outliers by SM
+boxplot(SM ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown"); abline(h=(mean(data_all$SM, na.rm = TRUE) )
+)
+```
+
+#no outliers --> too much variation
+
+```{r}
+#####outliers by ST2
+boxplot(ST2 ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown");  abline(h=(mean(data_all$ST2, na.rm = TRUE) )
+)
+
+```
+
+
+#no outliers --> too much variation
+
+```{r}
+#####outliers by ST5
+boxplot(ST5 ~ year+campaign+treatment,
+        data=data_all,
+        main="Outlier finder",
+        xlab="year, campaign, treatment",
+        ylab="dependent variable",
+        col="orange",
+        border="brown";  abline(h=(mean(data_all$ST2, na.rm = TRUE) )
+)
+```
+
+#no outliers --> too much variation
+
+
+
+#################################################################################
+####################normal distributions
+#######untranformed data
+
+```{r}
+#NEE
+Res_NEE <- aggregate(cbind(P.value=NEE) ~ year+campaign+treatment, data = data_all1,
+                 FUN = function(x) shapiro.test(x)$p.value)
+Res_NEE  %>% filter(P.value <=0.05)
+#10 not normal groupings
+shapiro.test(data_all1$NEE)
+#not normal
+
+bestNormalize(data_all1$NEE, allow_orderNorm = FALSE)
+#scale
+```
+
+
+```{r}
+#ER
+Res_ER <- aggregate(cbind(P.value=ER) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_ER  %>% filter(P.value <=0.05)
+#5 not normal groupings
+shapiro.test(data_all1$ER)
+#not normal
+
+bestNormalize(data_all1$ER, allow_orderNorm = FALSE)
+#scale
+```
+
+
+```{r}
+#GEP
+Res_GEP <- aggregate(cbind(P.value=GEP) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_GEP  %>% filter(P.value <=0.05)
+#not working
+shapiro.test(data_all1$GEP)
+#not normal
+
+bestNormalize(data_all1$GEP, allow_orderNorm = FALSE)
+#scale
+```
+
+
+```{r}
+#ch4
+Res_ch4 <- aggregate(cbind(P.value=ch4) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_ch4  %>% filter(P.value <=0.05)
+#11 not normal groupings
+shapiro.test(data_all1$ch4)
+#not normal
+
+bestNormalize(data_all1$ch4, allow_orderNorm = FALSE)
+#scale (yeo-johnson is better)
+```
+
+
+```{r}
+#PAR
+Res_PAR <- aggregate(cbind(P.value=PAR) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_PAR  %>% filter(P.value <=0.05)
+#12 not normal groupings
+shapiro.test(data_all1$PAR)
+#not normal
+
+bestNormalize(data_all1$PAR, allow_orderNorm = FALSE)
+#scale
+```
+
+
+```{r}
+
+#SM
+Res_SM <- aggregate(cbind(P.value=SM) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_SM  %>% filter(P.value <=0.05)
+#6 not normal groupings
+shapiro.test(data_all1$SM)
+#not normal
+
+bestNormalize(data_all1$SM, allow_orderNorm = FALSE)
+#scale
+```
+
+```{r}
+#ST2
+Res_ST2 <- aggregate(cbind(P.value=ST2) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_ST2  %>% filter(P.value <=0.05)
+#6 not normal groupings
+shapiro.test(data_all1$ST2)
+#not normal
+
+bestNormalize(data_all1$ST2, allow_orderNorm = FALSE)
+#scale
+```
+
+
+```{r}
+#ST5
+Res_ST5 <- aggregate(cbind(P.value=ST5) ~ year+campaign+treatment, data = data_all1,
+                     FUN = function(x) shapiro.test(x)$p.value)
+Res_ST5  %>% filter(P.value <=0.05)
+#4 not normal groupings
+shapiro.test(data_all1$ST5)
+#not normal
+
+bestNormalize(data_all1$ST5, allow_orderNorm = FALSE)
+#scale
+```
+
+##########################################
+#######correlations
+
+#####subsetting only contineus variables - gas fluxes and soil data
+
+```{r}
+data_all2<-select(data_all1, "NEE":"ST5" )
+```
+
+
+###running correlations on untransformed data
+
+```{r}
+res.unT <- rcorr(as.matrix(data_all2))
+
+res.unT.P=data.frame(res.unT$P)
+res.unT.r=data.frame(res.unT$r)
+
+write.table(res.unT.r, "clipboard", sep="\t") 
+```
+
+
+```{r}
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    r.o.w = rownames(cormat)[row(cormat)[ut]],
+    c.o.lumn = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+  )
+}
+cor.matix.unT = flattenCorrMatrix(res.unT$r, res.unT$P)
+cor.matix.unT %>% filter(p <=0.05)
+
+x<-cor.matix.unT %>% filter(p <=0.1)
+
+write.table(x, "clipboard", sep="\t") 
+```
+
+#####subsetting only contineus variables - weather data and soil data
+```{r}
+data_all3<-select(data_all1, "PAR":"ST5", "Air.temperature_.C.x", "PAR_µmol.m.2.s.1.x", "Precipitation_mm.x",
+                  "Air.temperature_.C.y", "PAR_µmol.m.2.s.1.y", "Precipitation_mm.y",
+                  "Air.temperature_.C", "PAR_µmol.m.2.s.1", "Precipitation_mm" )
+```
+
+
+###running correlations on untransformed data
+
+```{r}
+res.unT3 <- rcorr(as.matrix(data_all3))
+
+res.unT3.P=data.frame(res.unT3$P)
+res.unT3.r=data.frame(res.unT3$r)
+res.unT3.P
+res.unT3.r
+
+write.table(res.unT.r, "clipboard", sep="\t") 
+```
+
+
+```{r}
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    r.o.w = rownames(cormat)[row(cormat)[ut]],
+    c.o.lumn = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+  )
+}
+cor.matix.unT3 = flattenCorrMatrix(res.unT3$r, res.unT3$P)
+cor.matix.unT3 %>% filter(p <=0.05)
+
+x<-cor.matix.unT3 %>% filter(p <=0.1)
+
+write.table(x, "clipboard", sep="\t") 
+```
+
+
+
+
+##################transformed data
+
+res.T <- rcorr(as.matrix(trans.data2))
+
+
+
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    r.o.w = rownames(cormat)[row(cormat)[ut]],
+    c.o.lumn = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+  )
+}
+cor.matix.T = flattenCorrMatrix(res.T$r, res.T$P)
+cor.matix.T %>% filter(p <=0.05)
+
+x<-cor.matix.T %>% filter(p <=0.1)
+
+write.table(x, "clipboard", sep="\t") 
+
+
+
+data_all %>% 
+  group_by (year, campaign, treatment) %>%
+  summarise_each( funs(mean(., na.rm=TRUE)))
+
+
+
+
+
